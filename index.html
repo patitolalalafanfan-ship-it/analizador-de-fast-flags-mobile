@@ -34,6 +34,11 @@
       color: #f8fafc;
       font-size: 0.85rem;
     }
+    textarea.keywords-box {
+      height: 82px;
+      margin-top: 6px;
+      font-size: 0.82rem;
+    }
     textarea.clean-box {
       height: 190px;
       margin-top: 8px;
@@ -79,6 +84,7 @@
       border: 1px solid rgba(148, 163, 184, 0.25);
     }
     .section h2 { font-size: 1rem; margin: 0 0 8px; }
+    .hint { font-size: 0.76rem; color: #94a3b8; margin: 0; }
     .item {
       font-size: 0.82rem;
       padding: 6px 0;
@@ -120,6 +126,16 @@
 
     <textarea id="jsonInput" placeholder='Pega aquí tu JSON de FFlags, por ejemplo:&#10;{&#10;  "FFlagDebugForceCrash": false,&#10;  "DFIntTaskSchedulerTargetFps": 120&#10;}'></textarea>
 
+    <div class="section" style="margin-top:8px;">
+      <h2>Palabras clave de Peligro / PC / Crash (editable)</h2>
+      <p class="hint">Separa por coma o salto de línea. Si una flag contiene cualquiera de estas palabras, se marcará como peligro y se excluirá de la FLAG limpia.</p>
+      <textarea id="dangerKeywordsInput" class="keywords-box"></textarea>
+      <div class="row" style="margin-bottom:0;">
+        <button class="btn-primary" onclick="applyKeywordChanges()">Aplicar palabras editadas</button>
+        <button class="btn-secondary" onclick="resetDefaultKeywords()">Restaurar lista base</button>
+      </div>
+    </div>
+
     <div class="row">
       <button class="btn-primary" onclick="runAnalysis()">Analizar</button>
       <button class="btn-warn" onclick="cleanIncompatible()">Limpiar incompatibles Cel</button>
@@ -135,20 +151,10 @@
 
       <div class="filter-bar">
         <button class="chip active" data-filter="ALL" onclick="setFilter('ALL', this)">Todas</button>
-        <button class="chip" data-filter="CLEAN" onclick="setFilter('CLEAN', this)">FLAG completa limpia</button>
         <button class="chip" data-filter="RISK" onclick="setFilter('RISK', this)">Incompatibles / Riesgo</button>
         <button class="chip" data-filter="MOBILE" onclick="setFilter('MOBILE', this)">Cel (Mobile)</button>
         <button class="chip" data-filter="PC" onclick="setFilter('PC', this)">PC</button>
         <button class="chip" data-filter="GENERAL" onclick="setFilter('GENERAL', this)">General</button>
-      </div>
-
-      <div class="section" id="cleanBox">
-        <h2>FLAG completa limpia (sin crash, texturas, mapa ni PC) — <span id="cleanCount">0</span></h2>
-        <textarea id="cleanOutput" class="clean-box" readonly></textarea>
-        <div class="row" style="margin-bottom:0;">
-          <button class="btn-success" onclick="copyCleanJson()">Copiar FLAG limpia</button>
-          <button class="btn-primary" onclick="applyCleanToInput()">Pasar a entrada</button>
-        </div>
       </div>
 
       <div class="section" id="dupsBox" style="display:none;">
@@ -160,17 +166,67 @@
         <h2>Flags detectadas (<span id="shownCount">0</span>)</h2>
         <div id="flagsList"></div>
       </div>
+
+      <div class="section" id="cleanBox">
+        <h2>FLAG completa limpia — <span id="cleanCount">0</span></h2>
+        <textarea id="cleanOutput" class="clean-box" readonly></textarea>
+        <div class="row" style="margin-bottom:0;">
+          <button class="btn-success" onclick="copyCleanJson()">Copiar FLAG limpia</button>
+          <button class="btn-primary" onclick="applyCleanToInput()">Pasar a entrada</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <script>
     const MOBILE_RE = /(mobile|android|ios|touch|battery|thermal|gyro|accelerometer|haptic|joystick|thumbstick|phone|tablet)/i;
-    const PC_RE = /(d3d|dx11|dx12|vulkan|opengl|metal|window|mouse|keyboard|desktop|win32|uwp|fullscreen|cursor)/i;
-    const CEL_INCOMPAT_RE = /(crash|blackscreen|async|texture|tex|mipmap|atlas|map|world|terrain|chunk|streaming|render.*mode|graphics.*mode|skia|shader|lod)/i;
+    const PC_RE = /(d3d|dx11|dx12|vulkan|opengl|metal|window|mouse|keyboard|desktop|win32|uwp|fullscreen|cursor|windows|pc|chrome|cpu|gpu)/i;
 
+    const DEFAULT_DANGER_KEYWORDS = [
+      "asset", "Preloading", "Loading", "Packet", "Delay", "Network", "Ping",
+      "Core", "PC", "Windows", "Latency", "Chrome", "Debug", "csg", "Grap",
+      "Map", "Cache", "MTU", "Key", "Mouse", "Cpu", "Gpu", "Phase", "Server",
+      "Client", "Error", "Otam", "Send", "Hdr", "Disable", "Texture", "No",
+      "Data", "Video", "Audio", "Raknet"
+    ];
+
+    let activeKeywords = [...DEFAULT_DANGER_KEYWORDS];
     let parsedEntries = [];
     let cleanObj = {};
     let currentFilter = 'ALL';
+
+    function escapeRegex(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function syncKeywordsTextarea() {
+      document.getElementById('dangerKeywordsInput').value = activeKeywords.join(', ');
+    }
+
+    function parseKeywordsFromInput() {
+      const rawKw = document.getElementById('dangerKeywordsInput').value;
+      const list = rawKw
+        .split(/[\n,]+/)
+        .map(s => s.trim())
+        .filter(Boolean);
+      activeKeywords = [...new Set(list)];
+      syncKeywordsTextarea();
+    }
+
+    function applyKeywordChanges() {
+      parseKeywordsFromInput();
+      if (document.getElementById('jsonInput').value.trim()) {
+        runAnalysis();
+      }
+    }
+
+    function resetDefaultKeywords() {
+      activeKeywords = [...DEFAULT_DANGER_KEYWORDS];
+      syncKeywordsTextarea();
+      if (document.getElementById('jsonInput').value.trim()) {
+        runAnalysis();
+      }
+    }
 
     function loadFile(e) {
       const file = e.target.files[0];
@@ -199,19 +255,21 @@
       return 'GENERAL';
     }
 
-    function getRisk(name) {
-      const reasons = [];
-      if (PC_RE.test(name)) reasons.push('Flag de PC');
-      if (/(crash|blackscreen|async)/i.test(name)) reasons.push('Riesgo crash / async');
-      if (/(texture|tex|mipmap|atlas|shader|skia|render.*mode|graphics.*mode)/i.test(name)) reasons.push('Riesgo texturas / render');
-      if (/(map|world|terrain|chunk|streaming|lod)/i.test(name)) reasons.push('Riesgo mapa / mundo');
-      return reasons;
+    function getMatchedKeywords(name) {
+      const matched = [];
+      for (const kw of activeKeywords) {
+        const re = new RegExp(escapeRegex(kw), 'i');
+        if (re.test(name)) {
+          matched.push(kw);
+        }
+      }
+      return matched;
     }
 
     function buildCleanObject(obj) {
       const result = {};
       for (const [key, val] of Object.entries(obj)) {
-        if (getRisk(key).length === 0) {
+        if (getMatchedKeywords(key).length === 0) {
           result[key] = val;
         }
       }
@@ -219,6 +277,7 @@
     }
 
     function cleanIncompatible() {
+      parseKeywordsFromInput();
       const raw = document.getElementById('jsonInput').value.trim();
       if (!raw) return alert('Pega un JSON o carga un archivo primero.');
 
@@ -259,6 +318,7 @@
     }
 
     function runAnalysis() {
+      parseKeywordsFromInput();
       const raw = document.getElementById('jsonInput').value.trim();
       if (!raw) return alert('Pega un JSON o carga un archivo primero.');
 
@@ -283,7 +343,7 @@
         key,
         val,
         platform: getPlatform(key),
-        risks: getRisk(key)
+        matchedKeywords: getMatchedKeywords(key)
       }));
 
       cleanObj = buildCleanObject(obj);
@@ -293,13 +353,13 @@
 
       const mobileCount = parsedEntries.filter(x => x.platform === 'MOBILE').length;
       const pcCount = parsedEntries.filter(x => x.platform === 'PC').length;
-      const riskCount = parsedEntries.filter(x => x.risks.length > 0).length;
+      const riskCount = parsedEntries.filter(x => x.matchedKeywords.length > 0).length;
 
       document.getElementById('statsGrid').innerHTML = `
         <div class="card"><div class="num">${lines}</div><div>Líneas</div></div>
         <div class="card"><div class="num">${parsedEntries.length}</div><div>Total Flags</div></div>
         <div class="card clean"><div class="num">${cleanKeysCount}</div><div>FLAG completa limpia</div></div>
-        <div class="card warn"><div class="num">${riskCount}</div><div>Incompatibles / Riesgo (${mobileCount} Cel / ${pcCount} PC)</div></div>
+        <div class="card warn"><div class="num">${riskCount}</div><div>Peligro / PC (${mobileCount} Cel / ${pcCount} PC)</div></div>
       `;
 
       const dupsBox = document.getElementById('dupsBox');
@@ -326,8 +386,7 @@
     function renderList() {
       const filtered = parsedEntries.filter(item => {
         if (currentFilter === 'ALL') return true;
-        if (currentFilter === 'CLEAN') return item.risks.length === 0;
-        if (currentFilter === 'RISK') return item.risks.length > 0;
+        if (currentFilter === 'RISK') return item.matchedKeywords.length > 0;
         return item.platform === currentFilter;
       });
 
@@ -338,12 +397,15 @@
           : item.platform === 'PC'
           ? '<span class="tag tag-pc">PC</span>'
           : '<span class="tag tag-gen">GENERAL</span>';
-        const statusTag = item.risks.length > 0
-          ? `<span class="tag tag-risk">ALERTA: ${item.risks.join(', ')}</span>`
+        const hasRisk = item.matchedKeywords.length > 0;
+        const statusTag = hasRisk
+          ? `<span class="tag tag-risk">PELIGRO / PC: ${item.matchedKeywords.join(', ')}</span>`
           : `<span class="tag tag-clean">LIMPIA</span>`;
         return `<div class="item">${pTag}${statusTag}<b>${item.key}</b>: <code>${JSON.stringify(item.val)}</code></div>`;
       }).join('') || '<div class="item">Sin resultados para este filtro.</div>';
     }
+
+    syncKeywordsTextarea();
   </script>
 </body>
 </html>
