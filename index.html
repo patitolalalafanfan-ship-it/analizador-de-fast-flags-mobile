@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analizador de FFlags</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; padding: 14px; background: #0f172a; color: #e2e8f0; }
+    h1 { font-size: 1.25rem; margin: 0 0 10px; }
+    textarea {
+      width: 100%; height: 170px; padding: 10px; border-radius: 10px;
+      border: 1px solid #334155; background: #1e293b; color: #f8fafc; font-size: 0.85rem;
+    }
+    .row { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+    button, .file-btn {
+      flex: 1; min-width: 120px; padding: 11px 14px; border: none; border-radius: 10px;
+      font-weight: 700; font-size: 0.9rem; cursor: pointer; text-align: center;
+    }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-secondary { background: #334155; color: #f1f5f9; }
+    input[type="file"] { display: none; }
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0; }
+    .card { background: #1e293b; padding: 10px 12px; border-radius: 10px; border: 1px solid #334155; }
+    .card .num { font-size: 1.3rem; font-weight: 800; color: #60a5fa; }
+    .card.warn .num { color: #f87171; }
+    .section { background: #1e293b; padding: 12px; border-radius: 10px; margin-top: 10px; border: 1px solid #334155; }
+    .section h2 { font-size: 1rem; margin: 0 0 8px; }
+    .item { font-size: 0.82rem; padding: 6px 0; border-bottom: 1px solid #293548; word-break: break-word; }
+    .item:last-child { border-bottom: none; }
+    .tag { display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; margin-right: 6px; }
+    .tag-mobile { background: #065f46; color: #a7f3d0; }
+    .tag-pc { background: #1e3a8a; color: #bfdbfe; }
+    .tag-gen { background: #374151; color: #d1d5db; }
+    .tag-risk { background: #7f1d1d; color: #fecaca; }
+    .filter-bar { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0; padding-bottom: 4px; }
+    .chip {
+      padding: 6px 10px; border-radius: 999px; border: 1px solid #475569;
+      background: #1e293b; color: #e2e8f0; font-size: 0.78rem; white-space: nowrap; cursor: pointer;
+    }
+    .chip.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+  </style>
+</head>
+<body>
+  <h1>Analizador Rápido de FFlags</h1>
+  <textarea id="jsonInput" placeholder='Pega aquí tu JSON de FFlags, por ejemplo:&#10;{&#10;  "FFlagDebugForceCrash": false,&#10;  "DFIntTaskSchedulerTargetFps": 120&#10;}'></textarea>
+
+  <div class="row">
+    <button class="btn-primary" onclick="runAnalysis()">Analizar</button>
+    <label class="file-btn btn-secondary">
+      Cargar .json
+      <input type="file" id="fileInput" accept=".json,.txt" onchange="loadFile(event)" />
+    </label>
+    <button class="btn-secondary" onclick="clearAll()">Limpiar</button>
+  </div>
+
+  <div id="output" style="display:none;">
+    <div class="stats" id="statsGrid"></div>
+
+    <div class="filter-bar">
+      <button class="chip active" onclick="setFilter('ALL', this)">Todas</button>
+      <button class="chip" onclick="setFilter('RISK', this)">Riesgo Crash</button>
+      <button class="chip" onclick="setFilter('MOBILE', this)">Mobile</button>
+      <button class="chip" onclick="setFilter('PC', this)">PC</button>
+      <button class="chip" onclick="setFilter('GENERAL', this)">General</button>
+    </div>
+
+    <div class="section" id="dupsBox" style="display:none;">
+      <h2>Claves duplicadas</h2>
+      <div id="dupsList"></div>
+    </div>
+
+    <div class="section">
+      <h2>Flags detectadas (<span id="shownCount">0</span>)</h2>
+      <div id="flagsList"></div>
+    </div>
+  </div>
+
+  <script>
+    const MOBILE_RE = /(mobile|android|ios|touch|battery|thermal|gyro|accelerometer|haptic|joystick|thumbstick)/i;
+    const PC_RE = /(d3d|dx11|dx12|vulkan|opengl|metal|window|mouse|keyboard|desktop|win32|uwp|fullscreen)/i;
+    const RISK_RE = /(crash|blackscreen|render.*mode|graphics.*mode|taskscheduler|frametiming|interpolation|packet|replication|memory|heap|texturequality|skia|physics.*step|substep|worldstep)/i;
+
+    let parsedEntries = [];
+    let currentFilter = 'ALL';
+
+    function loadFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        document.getElementById('jsonInput').value = reader.result;
+        runAnalysis();
+      };
+      reader.readAsText(file);
+    }
+
+    function clearAll() {
+      document.getElementById('jsonInput').value = '';
+      document.getElementById('output').style.display = 'none';
+      parsedEntries = [];
+    }
+
+    function getPlatform(name) {
+      const m = MOBILE_RE.test(name);
+      const p = PC_RE.test(name);
+      if (m && !p) return 'MOBILE';
+      if (p && !m) return 'PC';
+      return 'GENERAL';
+    }
+
+    function getRisk(name, val) {
+      const reasons = [];
+      if (RISK_RE.test(name)) reasons.push('Categoría sensible');
+      if (typeof val === 'number') {
+        if (val < 0) reasons.push('Valor negativo');
+        if (val > 1000000) reasons.push('Valor muy alto');
+      }
+      if (typeof val === 'string' && val.length > 200) reasons.push('Texto muy largo');
+      return reasons;
+    }
+
+    function runAnalysis() {
+      const raw = document.getElementById('jsonInput').value.trim();
+      if (!raw) return alert('Pega un JSON o carga un archivo primero.');
+
+      const lines = raw.split(/\r?\n/).length;
+      const keyMatches = [...raw.matchAll(/"([^"]+)"\s*:/g)].map(m => m[1]);
+      const counts = {};
+      keyMatches.forEach(k => counts[k] = (counts[k] || 0) + 1);
+      const dups = Object.entries(counts).filter(([, c]) => c > 1);
+
+      let obj;
+      try {
+        obj = JSON.parse(raw);
+      } catch (err) {
+        return alert('JSON con error de sintaxis: ' + err.message);
+      }
+
+      if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
+        return alert('El JSON principal debe ser un objeto { "flag": valor }.');
+      }
+
+      parsedEntries = Object.entries(obj).map(([key, val]) => ({
+        key,
+        val,
+        platform: getPlatform(key),
+        risks: getRisk(key, val)
+      }));
+
+      const mobileCount = parsedEntries.filter(x => x.platform === 'MOBILE').length;
+      const pcCount = parsedEntries.filter(x => x.platform === 'PC').length;
+      const riskCount = parsedEntries.filter(x => x.risks.length > 0).length;
+
+      document.getElementById('statsGrid').innerHTML = `
+        <div class="card"><div class="num">${lines}</div><div>Líneas</div></div>
+        <div class="card"><div class="num">${parsedEntries.length}</div><div>Total Flags</div></div>
+        <div class="card"><div class="num">${mobileCount} Mobile / ${pcCount} PC</div><div>Plataforma</div></div>
+        <div class="card warn"><div class="num">${riskCount}</div><div>Riesgo Crash</div></div>
+      `;
+
+      const dupsBox = document.getElementById('dupsBox');
+      if (dups.length > 0) {
+        dupsBox.style.display = 'block';
+        document.getElementById('dupsList').innerHTML = dups
+          .map(([k, c]) => `<div class="item"><span class="tag tag-risk">x${c}</span>${k}</div>`)
+          .join('');
+      } else {
+        dupsBox.style.display = 'none';
+      }
+
+      document.getElementById('output').style.display = 'block';
+      renderList();
+    }
+
+    function setFilter(filter, el) {
+      currentFilter = filter;
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      renderList();
+    }
+
+    function renderList() {
+      const list = parsedEntries.filter(item => {
+        if (currentFilter === 'ALL') return true;
+        if (currentFilter === 'RISK') return item.risks.length > 0;
+        return item.platform === currentFilter;
+      });
+
+      document.getElementById('shownCount').textContent = list.length;
+      document.getElementById('flagsList').innerHTML = list.map(item => {
+        const pTag = item.platform === 'MOBILE'
+          ? '<span class="tag tag-mobile">MOBILE</span>'
+          : item.platform === 'PC'
+          ? '<span class="tag tag-pc">PC</span>'
+          : '<span class="tag tag-gen">GENERAL</span>';
+        const rTag = item.risks.length > 0
+          ? `<span class="tag tag-risk">RIESGO: ${item.risks.join(', ')}</span>`
+          : '';
+        return `<div class="item">${pTag}${rTag}<b>${item.key}</b>: <code>${JSON.stringify(item.val)}</code></div>`;
+      }).join('') || '<div class="item">Sin resultados para este filtro.</div>';
+    }
+  </script>
+</body>
+</html>
