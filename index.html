@@ -34,6 +34,12 @@
       color: #f8fafc;
       font-size: 0.85rem;
     }
+    textarea.clean-box {
+      height: 190px;
+      margin-top: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8rem;
+    }
     .row { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
     button, .file-btn {
       flex: 1;
@@ -48,6 +54,7 @@
     }
     .btn-primary { background: #3b82f6; color: #fff; }
     .btn-warn { background: #dc2626; color: #fff; }
+    .btn-success { background: #059669; color: #fff; }
     .btn-secondary {
       background: rgba(51, 65, 85, 0.9);
       color: #f1f5f9;
@@ -63,6 +70,7 @@
     }
     .card .num { font-size: 1.3rem; font-weight: 800; color: #60a5fa; }
     .card.warn .num { color: #f87171; }
+    .card.clean .num { color: #34d399; }
     .section {
       background: rgba(30, 41, 59, 0.9);
       padding: 12px;
@@ -90,6 +98,7 @@
     .tag-pc { background: #1e3a8a; color: #bfdbfe; }
     .tag-gen { background: #374151; color: #d1d5db; }
     .tag-risk { background: #7f1d1d; color: #fecaca; }
+    .tag-clean { background: #064e3b; color: #6ee7b7; }
     .filter-bar { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0; padding-bottom: 4px; }
     .chip {
       padding: 6px 10px;
@@ -126,10 +135,20 @@
 
       <div class="filter-bar">
         <button class="chip active" data-filter="ALL" onclick="setFilter('ALL', this)">Todas</button>
-        <button class="chip" data-filter="RISK" onclick="setFilter('RISK', this)">Incompatibles Cel</button>
+        <button class="chip" data-filter="CLEAN" onclick="setFilter('CLEAN', this)">FLAG completa limpia</button>
+        <button class="chip" data-filter="RISK" onclick="setFilter('RISK', this)">Incompatibles / Riesgo</button>
         <button class="chip" data-filter="MOBILE" onclick="setFilter('MOBILE', this)">Cel (Mobile)</button>
         <button class="chip" data-filter="PC" onclick="setFilter('PC', this)">PC</button>
         <button class="chip" data-filter="GENERAL" onclick="setFilter('GENERAL', this)">General</button>
+      </div>
+
+      <div class="section" id="cleanBox">
+        <h2>FLAG completa limpia (sin crash, texturas, mapa ni PC) — <span id="cleanCount">0</span></h2>
+        <textarea id="cleanOutput" class="clean-box" readonly></textarea>
+        <div class="row" style="margin-bottom:0;">
+          <button class="btn-success" onclick="copyCleanJson()">Copiar FLAG limpia</button>
+          <button class="btn-primary" onclick="applyCleanToInput()">Pasar a entrada</button>
+        </div>
       </div>
 
       <div class="section" id="dupsBox" style="display:none;">
@@ -147,9 +166,10 @@
   <script>
     const MOBILE_RE = /(mobile|android|ios|touch|battery|thermal|gyro|accelerometer|haptic|joystick|thumbstick|phone|tablet)/i;
     const PC_RE = /(d3d|dx11|dx12|vulkan|opengl|metal|window|mouse|keyboard|desktop|win32|uwp|fullscreen|cursor)/i;
-    const CEL_INCOMPAT_RE = /(crash|blackscreen|async|d3d|dx11|dx12|vulkan|opengl|metal|win32|uwp|desktop|mouse|keyboard|window|fullscreen|cursor|render.*mode|graphics.*mode|skia)/i;
+    const CEL_INCOMPAT_RE = /(crash|blackscreen|async|texture|tex|mipmap|atlas|map|world|terrain|chunk|streaming|render.*mode|graphics.*mode|skia|shader|lod)/i;
 
     let parsedEntries = [];
+    let cleanObj = {};
     let currentFilter = 'ALL';
 
     function loadFile(e) {
@@ -165,8 +185,10 @@
 
     function clearAll() {
       document.getElementById('jsonInput').value = '';
+      document.getElementById('cleanOutput').value = '';
       document.getElementById('output').style.display = 'none';
       parsedEntries = [];
+      cleanObj = {};
     }
 
     function getPlatform(name) {
@@ -180,8 +202,20 @@
     function getRisk(name) {
       const reasons = [];
       if (PC_RE.test(name)) reasons.push('Flag de PC');
-      if (CEL_INCOMPAT_RE.test(name) && !PC_RE.test(name)) reasons.push('Posible fallo en celular');
+      if (/(crash|blackscreen|async)/i.test(name)) reasons.push('Riesgo crash / async');
+      if (/(texture|tex|mipmap|atlas|shader|skia|render.*mode|graphics.*mode)/i.test(name)) reasons.push('Riesgo texturas / render');
+      if (/(map|world|terrain|chunk|streaming|lod)/i.test(name)) reasons.push('Riesgo mapa / mundo');
       return reasons;
+    }
+
+    function buildCleanObject(obj) {
+      const result = {};
+      for (const [key, val] of Object.entries(obj)) {
+        if (getRisk(key).length === 0) {
+          result[key] = val;
+        }
+      }
+      return result;
     }
 
     function cleanIncompatible() {
@@ -199,14 +233,28 @@
         return alert('El JSON principal debe ser un objeto { "flag": valor }.');
       }
 
-      const cleaned = {};
-      for (const [key, val] of Object.entries(obj)) {
-        if (getRisk(key).length === 0) {
-          cleaned[key] = val;
-        }
-      }
-
+      const cleaned = buildCleanObject(obj);
       document.getElementById('jsonInput').value = JSON.stringify(cleaned, null, 2);
+      runAnalysis();
+    }
+
+    function copyCleanJson() {
+      const text = document.getElementById('cleanOutput').value;
+      if (!text) return;
+      navigator.clipboard?.writeText(text).then(() => {
+        alert('FLAG completa limpia copiada.');
+      }).catch(() => {
+        const el = document.getElementById('cleanOutput');
+        el.select();
+        document.execCommand('copy');
+        alert('FLAG completa limpia copiada.');
+      });
+    }
+
+    function applyCleanToInput() {
+      const text = document.getElementById('cleanOutput').value;
+      if (!text) return;
+      document.getElementById('jsonInput').value = text;
       runAnalysis();
     }
 
@@ -238,6 +286,11 @@
         risks: getRisk(key)
       }));
 
+      cleanObj = buildCleanObject(obj);
+      const cleanKeysCount = Object.keys(cleanObj).length;
+      document.getElementById('cleanOutput').value = JSON.stringify(cleanObj, null, 2);
+      document.getElementById('cleanCount').textContent = cleanKeysCount;
+
       const mobileCount = parsedEntries.filter(x => x.platform === 'MOBILE').length;
       const pcCount = parsedEntries.filter(x => x.platform === 'PC').length;
       const riskCount = parsedEntries.filter(x => x.risks.length > 0).length;
@@ -245,8 +298,8 @@
       document.getElementById('statsGrid').innerHTML = `
         <div class="card"><div class="num">${lines}</div><div>Líneas</div></div>
         <div class="card"><div class="num">${parsedEntries.length}</div><div>Total Flags</div></div>
-        <div class="card"><div class="num">${mobileCount} Cel / ${pcCount} PC</div><div>Plataforma</div></div>
-        <div class="card warn"><div class="num">${riskCount}</div><div>Incompatibles Cel</div></div>
+        <div class="card clean"><div class="num">${cleanKeysCount}</div><div>FLAG completa limpia</div></div>
+        <div class="card warn"><div class="num">${riskCount}</div><div>Incompatibles / Riesgo (${mobileCount} Cel / ${pcCount} PC)</div></div>
       `;
 
       const dupsBox = document.getElementById('dupsBox');
@@ -273,6 +326,7 @@
     function renderList() {
       const filtered = parsedEntries.filter(item => {
         if (currentFilter === 'ALL') return true;
+        if (currentFilter === 'CLEAN') return item.risks.length === 0;
         if (currentFilter === 'RISK') return item.risks.length > 0;
         return item.platform === currentFilter;
       });
@@ -284,10 +338,10 @@
           : item.platform === 'PC'
           ? '<span class="tag tag-pc">PC</span>'
           : '<span class="tag tag-gen">GENERAL</span>';
-        const rTag = item.risks.length > 0
+        const statusTag = item.risks.length > 0
           ? `<span class="tag tag-risk">ALERTA: ${item.risks.join(', ')}</span>`
-          : '';
-        return `<div class="item">${pTag}${rTag}<b>${item.key}</b>: <code>${JSON.stringify(item.val)}</code></div>`;
+          : `<span class="tag tag-clean">LIMPIA</span>`;
+        return `<div class="item">${pTag}${statusTag}<b>${item.key}</b>: <code>${JSON.stringify(item.val)}</code></div>`;
       }).join('') || '<div class="item">Sin resultados para este filtro.</div>';
     }
   </script>
