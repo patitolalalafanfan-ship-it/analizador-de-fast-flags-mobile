@@ -3,82 +3,183 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Analizador de FFlags</title>
+  <title>Analizador de FFlags - by:papi ogryzek</title>
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-    body { margin: 0; padding: 14px; background: #0f172a; color: #e2e8f0; }
-    h1 { font-size: 1.25rem; margin: 0 0 10px; }
+    body {
+      margin: 0;
+      padding: 14px;
+      background: #0f172a;
+      color: #e2e8f0;
+      position: relative;
+      min-height: 100vh;
+    }
+
+    /* Fondo de video */
+    .bg-video-wrap {
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      overflow: hidden;
+      background: #090d16;
+    }
+    .bg-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: grayscale(100%) contrast(1.08);
+    }
+    .bg-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: rgba(9, 13, 22, 0.72);
+    }
+
+    .container {
+      max-width: 780px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+    h1 { font-size: 1.3rem; margin: 0 0 2px; }
+    .credit {
+      font-size: 0.82rem;
+      color: #93c5fd;
+      font-weight: 600;
+      margin: 0 0 12px;
+    }
     textarea {
-      width: 100%; height: 170px; padding: 10px; border-radius: 10px;
-      border: 1px solid #334155; background: #1e293b; color: #f8fafc; font-size: 0.85rem;
+      width: 100%;
+      height: 170px;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(30, 41, 59, 0.82);
+      backdrop-filter: blur(6px);
+      color: #f8fafc;
+      font-size: 0.85rem;
     }
     .row { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
     button, .file-btn {
-      flex: 1; min-width: 120px; padding: 11px 14px; border: none; border-radius: 10px;
-      font-weight: 700; font-size: 0.9rem; cursor: pointer; text-align: center;
+      flex: 1;
+      min-width: 120px;
+      padding: 11px 14px;
+      border: none;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      text-align: center;
     }
     .btn-primary { background: #3b82f6; color: #fff; }
-    .btn-secondary { background: #334155; color: #f1f5f9; }
+    .btn-secondary {
+      background: rgba(51, 65, 85, 0.88);
+      color: #f1f5f9;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
     input[type="file"] { display: none; }
     .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0; }
-    .card { background: #1e293b; padding: 10px 12px; border-radius: 10px; border: 1px solid #334155; }
+    .card {
+      background: rgba(30, 41, 59, 0.84);
+      backdrop-filter: blur(6px);
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
     .card .num { font-size: 1.3rem; font-weight: 800; color: #60a5fa; }
     .card.warn .num { color: #f87171; }
-    .section { background: #1e293b; padding: 12px; border-radius: 10px; margin-top: 10px; border: 1px solid #334155; }
+    .section {
+      background: rgba(30, 41, 59, 0.84);
+      backdrop-filter: blur(6px);
+      padding: 12px;
+      border-radius: 10px;
+      margin-top: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
     .section h2 { font-size: 1rem; margin: 0 0 8px; }
-    .item { font-size: 0.82rem; padding: 6px 0; border-bottom: 1px solid #293548; word-break: break-word; }
+    .item {
+      font-size: 0.82rem;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+      word-break: break-word;
+    }
     .item:last-child { border-bottom: none; }
-    .tag { display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; margin-right: 6px; }
+    .tag {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      margin-right: 6px;
+    }
     .tag-mobile { background: #065f46; color: #a7f3d0; }
     .tag-pc { background: #1e3a8a; color: #bfdbfe; }
     .tag-gen { background: #374151; color: #d1d5db; }
     .tag-risk { background: #7f1d1d; color: #fecaca; }
     .filter-bar { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0; padding-bottom: 4px; }
     .chip {
-      padding: 6px 10px; border-radius: 999px; border: 1px solid #475569;
-      background: #1e293b; color: #e2e8f0; font-size: 0.78rem; white-space: nowrap; cursor: pointer;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(30, 41, 59, 0.85);
+      color: #e2e8f0;
+      font-size: 0.78rem;
+      white-space: nowrap;
+      cursor: pointer;
     }
     .chip.active { background: #2563eb; border-color: #2563eb; color: #fff; }
   </style>
 </head>
 <body>
-  <h1>Analizador Rápido de FFlags</h1>
-  <textarea id="jsonInput" placeholder='Pega aquí tu JSON de FFlags, por ejemplo:&#10;{&#10;  "FFlagDebugForceCrash": false,&#10;  "DFIntTaskSchedulerTargetFps": 120&#10;}'></textarea>
-
-  <div class="row">
-    <button class="btn-primary" onclick="runAnalysis()">Analizar</button>
-    <label class="file-btn btn-secondary">
-      Cargar .json
-      <input type="file" id="fileInput" accept=".json,.txt" onchange="loadFile(event)" />
-    </label>
-    <button class="btn-secondary" onclick="clearAll()">Limpiar</button>
+  <div class="bg-video-wrap" aria-hidden="true">
+    <video class="bg-video" autoplay loop muted playsinline>
+      <source src="fondo.mp4" type="video/mp4" />
+    </video>
   </div>
+  <div class="bg-overlay" aria-hidden="true"></div>
 
-  <div id="output" style="display:none;">
-    <div class="stats" id="statsGrid"></div>
+  <div class="container">
+    <h1>Analizador Rápido de FFlags</h1>
+    <p class="credit">by:papi ogryzek</p>
 
-    <div class="filter-bar">
-      <button class="chip active" onclick="setFilter('ALL', this)">Todas</button>
-      <button class="chip" onclick="setFilter('RISK', this)">Riesgo Crash</button>
-      <button class="chip" onclick="setFilter('MOBILE', this)">Mobile</button>
-      <button class="chip" onclick="setFilter('PC', this)">PC</button>
-      <button class="chip" onclick="setFilter('GENERAL', this)">General</button>
+    <textarea id="jsonInput" placeholder='Pega aquí tu JSON de FFlags, por ejemplo:&#10;{&#10;  "FFlagDebugForceCrash": false,&#10;  "DFIntTaskSchedulerTargetFps": 120&#10;}'></textarea>
+
+    <div class="row">
+      <button class="btn-primary" onclick="runAnalysis()">Analizar</button>
+      <label class="file-btn btn-secondary">
+        Cargar .json
+        <input type="file" id="fileInput" accept=".json,.txt" onchange="loadFile(event)" />
+      </label>
+      <button class="btn-secondary" onclick="clearAll()">Limpiar</button>
     </div>
 
-    <div class="section" id="dupsBox" style="display:none;">
-      <h2>Claves duplicadas</h2>
-      <div id="dupsList"></div>
-    </div>
+    <div id="output" style="display:none;">
+      <div class="stats" id="statsGrid"></div>
 
-    <div class="section">
-      <h2>Flags detectadas (<span id="shownCount">0</span>)</h2>
-      <div id="flagsList"></div>
+      <div class="filter-bar">
+        <button class="chip active" data-filter="ALL" onclick="setFilter('ALL', this)">Todas</button>
+        <button class="chip" data-filter="RISK" onclick="setFilter('RISK', this)">Riesgo Crash</button>
+        <button class="chip" data-filter="MOBILE" onclick="setFilter('MOBILE', this)">Cel (Mobile)</button>
+        <button class="chip" data-filter="PC" onclick="setFilter('PC', this)">PC</button>
+        <button class="chip" data-filter="GENERAL" onclick="setFilter('GENERAL', this)">General</button>
+      </div>
+
+      <div class="section" id="dupsBox" style="display:none;">
+        <h2>Claves duplicadas</h2>
+        <div id="dupsList"></div>
+      </div>
+
+      <div class="section">
+        <h2>Flags detectadas (<span id="shownCount">0</span>)</h2>
+        <div id="flagsList"></div>
+      </div>
     </div>
   </div>
 
   <script>
-    const MOBILE_RE = /(mobile|android|ios|touch|battery|thermal|gyro|accelerometer|haptic|joystick|thumbstick)/i;
-    const PC_RE = /(d3d|dx11|dx12|vulkan|opengl|metal|window|mouse|keyboard|desktop|win32|uwp|fullscreen)/i;
+    const MOBILE_RE = /(mobile|android|ios|touch|battery|thermal|gyro|accelerometer|haptic|joystick|thumbstick|phone|tablet)/i;
+    const PC_RE = /(d3d|dx11|dx12|vulkan|opengl|metal|window|mouse|keyboard|desktop|win32|uwp|fullscreen|cursor)/i;
     const RISK_RE = /(crash|blackscreen|render.*mode|graphics.*mode|taskscheduler|frametiming|interpolation|packet|replication|memory|heap|texturequality|skia|physics.*step|substep|worldstep)/i;
 
     let parsedEntries = [];
@@ -102,10 +203,10 @@
     }
 
     function getPlatform(name) {
-      const m = MOBILE_RE.test(name);
-      const p = PC_RE.test(name);
-      if (m && !p) return 'MOBILE';
-      if (p && !m) return 'PC';
+      const hasMobile = MOBILE_RE.test(name);
+      const hasPc = PC_RE.test(name);
+      if (hasMobile) return 'MOBILE';
+      if (hasPc) return 'PC';
       return 'GENERAL';
     }
 
@@ -155,7 +256,7 @@
       document.getElementById('statsGrid').innerHTML = `
         <div class="card"><div class="num">${lines}</div><div>Líneas</div></div>
         <div class="card"><div class="num">${parsedEntries.length}</div><div>Total Flags</div></div>
-        <div class="card"><div class="num">${mobileCount} Mobile / ${pcCount} PC</div><div>Plataforma</div></div>
+        <div class="card"><div class="num">${mobileCount} Cel / ${pcCount} PC</div><div>Plataforma</div></div>
         <div class="card warn"><div class="num">${riskCount}</div><div>Riesgo Crash</div></div>
       `;
 
@@ -176,21 +277,21 @@
     function setFilter(filter, el) {
       currentFilter = filter;
       document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-      el.classList.add('active');
+      if (el) el.classList.add('active');
       renderList();
     }
 
     function renderList() {
-      const list = parsedEntries.filter(item => {
+      const filtered = parsedEntries.filter(item => {
         if (currentFilter === 'ALL') return true;
         if (currentFilter === 'RISK') return item.risks.length > 0;
         return item.platform === currentFilter;
       });
 
-      document.getElementById('shownCount').textContent = list.length;
-      document.getElementById('flagsList').innerHTML = list.map(item => {
+      document.getElementById('shownCount').textContent = filtered.length;
+      document.getElementById('flagsList').innerHTML = filtered.map(item => {
         const pTag = item.platform === 'MOBILE'
-          ? '<span class="tag tag-mobile">MOBILE</span>'
+          ? '<span class="tag tag-mobile">CEL</span>'
           : item.platform === 'PC'
           ? '<span class="tag tag-pc">PC</span>'
           : '<span class="tag tag-gen">GENERAL</span>';
