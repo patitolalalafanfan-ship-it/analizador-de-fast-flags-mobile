@@ -30,17 +30,17 @@
       padding: 10px;
       border-radius: 10px;
       border: 1px solid rgba(148, 163, 184, 0.35);
-      background: rgba(30, 41, 59, 0.9);
+      background: rgba(30, 41, 59, 0.92);
       color: #f8fafc;
       font-size: 0.85rem;
     }
     textarea.keywords-box {
-      height: 82px;
+      height: 86px;
       margin-top: 6px;
       font-size: 0.82rem;
     }
     textarea.clean-box {
-      height: 190px;
+      height: 200px;
       margin-top: 8px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 0.8rem;
@@ -61,14 +61,14 @@
     .btn-warn { background: #dc2626; color: #fff; }
     .btn-success { background: #059669; color: #fff; }
     .btn-secondary {
-      background: rgba(51, 65, 85, 0.9);
+      background: rgba(51, 65, 85, 0.92);
       color: #f1f5f9;
       border: 1px solid rgba(148, 163, 184, 0.25);
     }
     input[type="file"] { display: none; }
     .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0; }
     .card {
-      background: rgba(30, 41, 59, 0.9);
+      background: rgba(30, 41, 59, 0.92);
       padding: 10px 12px;
       border-radius: 10px;
       border: 1px solid rgba(148, 163, 184, 0.25);
@@ -77,7 +77,7 @@
     .card.warn .num { color: #f87171; }
     .card.clean .num { color: #34d399; }
     .section {
-      background: rgba(30, 41, 59, 0.9);
+      background: rgba(30, 41, 59, 0.92);
       padding: 12px;
       border-radius: 10px;
       margin-top: 10px;
@@ -104,13 +104,12 @@
     .tag-pc { background: #1e3a8a; color: #bfdbfe; }
     .tag-gen { background: #374151; color: #d1d5db; }
     .tag-risk { background: #7f1d1d; color: #fecaca; }
-    .tag-clean { background: #064e3b; color: #6ee7b7; }
     .filter-bar { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0; padding-bottom: 4px; }
     .chip {
       padding: 6px 10px;
       border-radius: 999px;
       border: 1px solid rgba(148, 163, 184, 0.35);
-      background: rgba(30, 41, 59, 0.9);
+      background: rgba(30, 41, 59, 0.92);
       color: #e2e8f0;
       font-size: 0.78rem;
       white-space: nowrap;
@@ -126,19 +125,19 @@
 
     <textarea id="jsonInput" placeholder='Pega aquí tu JSON de FFlags, por ejemplo:&#10;{&#10;  "FFlagDebugForceCrash": false,&#10;  "DFIntTaskSchedulerTargetFps": 120&#10;}'></textarea>
 
-    <div class="section" style="margin-top:8px;">
-      <h2>Palabras clave de Peligro / PC / Crash (editable)</h2>
-      <p class="hint">Separa por coma o salto de línea. Si una flag contiene cualquiera de estas palabras, se marcará como peligro y se excluirá de la FLAG limpia.</p>
+    <div class="section">
+      <h2>Editar flags de Peligro / PC / Crash</h2>
+      <p class="hint">Edita, agrega o borra palabras separadas por coma o salto de línea. Si una flag coincide, sale marcada como Peligro / PC y no entra en la FLAG limpia.</p>
       <textarea id="dangerKeywordsInput" class="keywords-box"></textarea>
       <div class="row" style="margin-bottom:0;">
-        <button class="btn-primary" onclick="applyKeywordChanges()">Aplicar palabras editadas</button>
-        <button class="btn-secondary" onclick="resetDefaultKeywords()">Restaurar lista base</button>
+        <button class="btn-primary" onclick="applyKeywordChanges()">Guardar y analizar</button>
+        <button class="btn-secondary" onclick="resetDefaultKeywords()">Restaurar lista</button>
       </div>
     </div>
 
     <div class="row">
       <button class="btn-primary" onclick="runAnalysis()">Analizar</button>
-      <button class="btn-warn" onclick="cleanIncompatible()">Limpiar incompatibles Cel</button>
+      <button class="btn-warn" onclick="cleanIncompatible()">Limpiar Peligro / PC</button>
       <label class="file-btn btn-secondary">
         Cargar .json
         <input type="file" id="fileInput" accept=".json,.txt" onchange="loadFile(event)" />
@@ -151,7 +150,7 @@
 
       <div class="filter-bar">
         <button class="chip active" data-filter="ALL" onclick="setFilter('ALL', this)">Todas</button>
-        <button class="chip" data-filter="RISK" onclick="setFilter('RISK', this)">Incompatibles / Riesgo</button>
+        <button class="chip" data-filter="RISK" onclick="setFilter('RISK', this)">Peligro / PC</button>
         <button class="chip" data-filter="MOBILE" onclick="setFilter('MOBILE', this)">Cel (Mobile)</button>
         <button class="chip" data-filter="PC" onclick="setFilter('PC', this)">PC</button>
         <button class="chip" data-filter="GENERAL" onclick="setFilter('GENERAL', this)">General</button>
@@ -167,8 +166,9 @@
         <div id="flagsList"></div>
       </div>
 
-      <div class="section" id="cleanBox">
-        <h2>FLAG completa limpia — <span id="cleanCount">0</span></h2>
+      <!-- Último ítem al final: FLAG completa limpia -->
+      <div class="section" id="cleanLastItem">
+        <h2>Último ítem — FLAG completa limpia (<span id="cleanCount">0</span>)</h2>
         <textarea id="cleanOutput" class="clean-box" readonly></textarea>
         <div class="row" style="margin-bottom:0;">
           <button class="btn-success" onclick="copyCleanJson()">Copiar FLAG limpia</button>
@@ -397,11 +397,10 @@
           : item.platform === 'PC'
           ? '<span class="tag tag-pc">PC</span>'
           : '<span class="tag tag-gen">GENERAL</span>';
-        const hasRisk = item.matchedKeywords.length > 0;
-        const statusTag = hasRisk
+        const riskTag = item.matchedKeywords.length > 0
           ? `<span class="tag tag-risk">PELIGRO / PC: ${item.matchedKeywords.join(', ')}</span>`
-          : `<span class="tag tag-clean">LIMPIA</span>`;
-        return `<div class="item">${pTag}${statusTag}<b>${item.key}</b>: <code>${JSON.stringify(item.val)}</code></div>`;
+          : '';
+        return `<div class="item">${pTag}${riskTag}<b>${item.key}</b>: <code>${JSON.stringify(item.val)}</code></div>`;
       }).join('') || '<div class="item">Sin resultados para este filtro.</div>';
     }
 
